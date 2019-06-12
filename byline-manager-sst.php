@@ -59,7 +59,10 @@ function add_rest_field() {
 							],
 						];
 					} else {
-						$byline_id = get_or_create_byline_id_by_name( $entry['name'] );
+						$byline_id = get_or_create_byline_id_by_name(
+							$entry['name'],
+							$entry['data']
+						);
 						if ( is_wp_error( $byline_id ) ) {
 							return $byline_id;
 						}
@@ -106,9 +109,10 @@ function add_rest_field() {
  * name, or create a new profile and return the associated byline_id.
  *
  * @param string $name Author name.
+ * @param array  $data Author data.
  * @return int|\WP_Error Byline term ID on success, WP_Error on failure.
  */
-function get_or_create_byline_id_by_name( string $name ) {
+function get_or_create_byline_id_by_name( string $name, array $data ) {
 	$profile = get_page_by_title( $name, OBJECT, \Byline_Manager\PROFILE_POST_TYPE );
 	if ( ! $profile ) {
 		$profile_id = wp_insert_post(
@@ -121,6 +125,9 @@ function get_or_create_byline_id_by_name( string $name ) {
 		);
 		if ( is_wp_error( $profile_id ) ) {
 			return $profile_id;
+		}
+		foreach ( array_keys( $data ) as $key ) {
+			update_post_meta( $profile_id, $key, $data[ $key ] );
 		}
 	} else {
 		$profile_id = $profile->ID;
