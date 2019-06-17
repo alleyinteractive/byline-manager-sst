@@ -175,16 +175,21 @@ function handle_reference( $ref, $profile_id ) {
 			require_once ABSPATH . 'wp-admin/includes/media.php';
 		}
 		// Check if image was already uploaded.
-		$attachments_by_sst_source_id = get_posts([
-			'posts_per_page' => 1,
-			'post_type'      => 'attachment',
-			'meta_query'     => array(
-				array(
-					'key'   => 'sst_source_id',
-					'value' => $source_id,
-				)
-			)
-		]);
+		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.get_posts_get_posts
+		$attachments_by_sst_source_id = get_posts(
+			[
+				'posts_per_page'   => 1,
+				'post_type'        => 'attachment',
+				'suppress_filters' => false,
+				// phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_query'       => array(
+					array(
+						'key'   => 'sst_source_id',
+						'value' => $source_id,
+					),
+				),
+			]
+		);
 		if ( ! empty( $attachments_by_sst_source_id ) ) {
 			// Update profile meta.
 			if ( ! empty( $ref['save_to_meta'] ) ) {
