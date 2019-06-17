@@ -61,7 +61,8 @@ function add_rest_field() {
 					} else {
 						$byline_id = get_or_create_byline_id_by_name(
 							$entry['name'],
-							$entry['data']
+							$entry['data'],
+							$entry['refs'] ?? []
 						);
 						if ( is_wp_error( $byline_id ) ) {
 							return $byline_id;
@@ -110,9 +111,10 @@ function add_rest_field() {
  *
  * @param string $name Author name.
  * @param array  $data Author data.
+ * @param array  $refs References.
  * @return int|\WP_Error Byline term ID on success, WP_Error on failure.
  */
-function get_or_create_byline_id_by_name( string $name, array $data ) {
+function get_or_create_byline_id_by_name( string $name, array $data, array $refs ) {
 	$profile = get_page_by_title( $name, OBJECT, \Byline_Manager\PROFILE_POST_TYPE );
 	if ( ! $profile ) {
 		$profile_id = wp_insert_post(
@@ -129,6 +131,11 @@ function get_or_create_byline_id_by_name( string $name, array $data ) {
 		foreach ( array_keys( $data ) as $key ) {
 			update_post_meta( $profile_id, $key, $data[ $key ] );
 		}
+		if ( ! empty( $refs ) ) {
+			foreach ( $refs as $ref ) {
+				handle_reference( $ref, $profile_id );
+			}
+		}
 	} else {
 		$profile_id = $profile->ID;
 	}
@@ -143,4 +150,88 @@ function get_or_create_byline_id_by_name( string $name, array $data ) {
 	}
 
 	return $byline_id;
+}
+
+/**
+ * Handle byline reference.
+ * 
+ * @param object $ref Reference arguments.
+ * @param int    $profile_id The profile post ID.
+ */
+function handle_reference( $ref, $profile_id ) {
+	if ( ! empty( $ref['subtype'] ) && 'attachment' === $ref['subtype'] ) {
+		if ( empty( $ref['args'] ) ) {
+			return;
+		}
+		$source    = $ref['args'];
+		$source_id = $ref['sst_source_id'];
+
+		// Move the source id to meta.
+		$source['meta']['sst_source_id'] = $source_id;
+
+		if ( ! function_exists( 'media_sideload_image' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+			require_once ABSPATH . 'wp-admin/includes/media.php';
+		}
+		// Check if image was already uploaded.
+		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.get_posts_get_posts
+		$attachments_by_sst_source_id = get_posts(
+			[
+				'posts_per_page'   => 1,
+				'post_type'        => 'attachment',
+				'suppress_filters' => false,
+				// phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_query'       => array(
+					array(
+						'key'   => 'sst_source_id',
+						'value' => $source_id,
+					),
+				),
+			]
+		);
+		if ( ! empty( $attachments_by_sst_source_id ) ) {
+			// Update profile meta.
+			if ( ! empty( $ref['save_to_meta'] ) ) {
+				update_post_meta(
+					$profile_id,
+					$ref['save_to_meta'],
+					$attachments_by_sst_source_id[0]->ID
+				);
+			}
+			return;
+		}
+		// Upload image.
+		$attachment_id = media_sideload_image(
+			$source['url'],
+			$profile_id,
+			! empty( $source['title'] ) ? $source['title'] : null,
+			'id'
+		);
+		if ( is_wp_error( $attachment_id ) ) {
+			return $attachment_id;
+		}
+		// Update profile meta.
+		if ( ! empty( $ref['save_to_meta'] ) ) {
+			update_post_meta( $profile_id, $ref['save_to_meta'], $attachment_id );
+		}
+		// If this is an image, make some special accommodations.
+		if (
+			empty( $source['meta']['_wp_attachment_image_alt'] )
+			&& ! empty( $source['title'] )
+		) {
+			$source['meta']['_wp_attachment_image_alt'] = $source['title'];
+		}
+		// Save meta for the attachment.
+		$meta = $source['meta'];
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $value ) {
+				update_post_meta(
+					$attachment_id,
+					$key,
+					$value
+				);
+			}
+		}
+	}
 }
