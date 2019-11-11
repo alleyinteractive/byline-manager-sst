@@ -35,7 +35,15 @@ function add_rest_field() {
 					'byline_entries' => [],
 				];
 
-				foreach ( $byline_entries as $entry ) {
+				/**
+				 * Filter the byline entires for a post.
+				 *
+				 * @param array $byline_entries Byline entires for the post.
+				 * @param \WP_Post $post Post object.
+				 */
+				$byline_entries = apply_filters( 'byline_manager_sst_byline_entries', $byline_entries, $post );
+
+				foreach ( (array) $byline_entries as $entry ) {
 					// Don't save empty items.
 					if ( empty( $entry['text'] ) && empty( $entry['name'] ) ) {
 						return new WP_Error(
@@ -154,7 +162,7 @@ function get_or_create_byline_id_by_name( string $name, array $data, array $refs
 
 /**
  * Handle byline reference.
- * 
+ *
  * @param object $ref Reference arguments.
  * @param int    $profile_id The profile post ID.
  */
